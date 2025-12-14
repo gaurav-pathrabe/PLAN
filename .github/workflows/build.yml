@@ -7,21 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows/amd64
-            artifact: planner.exe
-          - os: macos-latest
-            platform: darwin/universal
-            artifact: planner.app
-          - os: ubuntu-latest
-            platform: linux/amd64
-            artifact: planner
-
-    runs-on: ${{ matrix.os }}
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
     
     steps:
       - name: Checkout
@@ -30,7 +18,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.22'
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -40,38 +28,85 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Install Linux Dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
-
       - name: Build
-        run: wails build -platform ${{ matrix.platform }}
+        run: wails build -platform windows/amd64
 
-      - name: Upload Artifact (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PLAN-Windows
           path: build/bin/planner.exe
 
-      - name: Upload Artifact (macOS)
-        if: matrix.os == 'macos-latest'
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build
+        run: wails build -platform darwin/universal
+
+      - name: Zip App
+        run: cd build/bin && zip -r planner-macos.zip planner.app
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PLAN-macOS
-          path: build/bin/planner.app
+          path: build/bin/planner-macos.zip
 
-      - name: Upload Artifact (Linux)
-        if: matrix.os == 'ubuntu-latest'
+  build-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build
+        run: wails build -platform linux/amd64
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PLAN-Linux
           path: build/bin/planner
 
   release:
-    needs: build
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     
@@ -81,12 +116,15 @@ jobs:
         with:
           path: artifacts
 
+      - name: Display structure
+        run: ls -R artifacts
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/PLAN-Windows/planner.exe
-            artifacts/PLAN-macOS/planner.app
+            artifacts/PLAN-macOS/planner-macos.zip
             artifacts/PLAN-Linux/planner
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
