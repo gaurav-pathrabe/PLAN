@@ -10,6 +10,10 @@ export function DeleteTask(arg1) {
   return window['go']['main']['App']['DeleteTask'](arg1);
 }
 
+export function GetExportPath() {
+  return window['go']['main']['App']['GetExportPath']();
+}
+
 export function GetMonthlyReport(arg1, arg2) {
   return window['go']['main']['App']['GetMonthlyReport'](arg1, arg2);
 }
@@ -30,12 +34,20 @@ export function GetYearlyReport(arg1) {
   return window['go']['main']['App']['GetYearlyReport'](arg1);
 }
 
+export function IsWeekExported(arg1) {
+  return window['go']['main']['App']['IsWeekExported'](arg1);
+}
+
 export function LoadDay(arg1) {
   return window['go']['main']['App']['LoadDay'](arg1);
 }
 
 export function LoadWeek(arg1) {
   return window['go']['main']['App']['LoadWeek'](arg1);
+}
+
+export function MarkWeekExported(arg1) {
+  return window['go']['main']['App']['MarkWeekExported'](arg1);
 }
 
 export function ReorderTasks(arg1) {
@@ -48,6 +60,14 @@ export function SaveDay(arg1, arg2) {
 
 export function SaveHTMLExport(arg1, arg2) {
   return window['go']['main']['App']['SaveHTMLExport'](arg1, arg2);
+}
+
+export function SelectDirectory() {
+  return window['go']['main']['App']['SelectDirectory']();
+}
+
+export function SetExportPath(arg1) {
+  return window['go']['main']['App']['SetExportPath'](arg1);
 }
 
 export function UpdateTask(arg1, arg2) {

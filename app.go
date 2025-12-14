@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // TaskTemplate represents a task that can be checked off daily
@@ -23,8 +24,10 @@ type TaskTemplate struct {
 
 // PlannerData is the root data structure for storage
 type PlannerData struct {
-	Templates []TaskTemplate      `json:"templates"`
-	Days      map[string]DayTasks `json:"days"`
+	Templates     []TaskTemplate      `json:"templates"`
+	Days          map[string]DayTasks `json:"days"`
+	ExportPath    string              `json:"exportPath,omitempty"`
+	ExportHistory map[string]string   `json:"exportHistory,omitempty"` // weekStart -> exportedDate
 }
 
 // DayTasks maps task IDs to completion status
@@ -42,8 +45,9 @@ type App struct {
 func NewApp() *App {
 	return &App{
 		data: PlannerData{
-			Templates: []TaskTemplate{},
-			Days:      make(map[string]DayTasks),
+			Templates:     []TaskTemplate{},
+			Days:          make(map[string]DayTasks),
+			ExportHistory: make(map[string]string),
 		},
 	}
 }
@@ -197,7 +201,40 @@ func (a *App) saveDataLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(a.dataPath, data, 0644)
+	return a.atomicWriteFile(a.dataPath, data)
+}
+
+// atomicWriteFile writes data to a temporary file first, then renames it
+// This prevents data corruption on power loss or crash
+func (a *App) atomicWriteFile(filename string, data []byte) error {
+	dir := filepath.Dir(filename)
+	tmpFile, err := os.CreateTemp(dir, "plan-tmp-*.json")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+
+	// Write data
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+
+	// Sync ensures physical write to disk
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+
+	// Atomic rename
+	return os.Rename(tmpPath, filename)
 }
 
 // GetTaskTemplates returns all active task templates
@@ -581,17 +618,81 @@ func (a *App) GetYearlyReport(year int) map[string]interface{} {
 
 // SaveHTMLExport saves HTML content to Downloads folder
 func (a *App) SaveHTMLExport(filename string, htmlContent string) (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
+	// Check export path setting or default
+	exportDir := a.data.ExportPath
+	if exportDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		exportDir = filepath.Join(homeDir, "Downloads")
+	}
+
+	// Create PLAN_Exports subfolder
+	finalDir := filepath.Join(exportDir, "PLAN_Exports")
+	if err := os.MkdirAll(finalDir, 0755); err != nil {
 		return "", err
 	}
 
-	downloadsPath := filepath.Join(homeDir, "Downloads", filename)
-	
-	err = os.WriteFile(downloadsPath, []byte(htmlContent), 0644)
+	downloadsPath := filepath.Join(finalDir, filename)
+
+	err := os.WriteFile(downloadsPath, []byte(htmlContent), 0644)
 	if err != nil {
 		return "", err
 	}
 
 	return downloadsPath, nil
+}
+
+// SetExportPath updates the export directory
+func (a *App) SetExportPath(path string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.data.ExportPath = path
+	return a.saveDataLocked()
+}
+
+// GetExportPath returns the current export directory
+func (a *App) GetExportPath() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.data.ExportPath
+}
+
+// MarkWeekExported records that a week has been exported
+func (a *App) MarkWeekExported(weekStart string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.data.ExportHistory == nil {
+		a.data.ExportHistory = make(map[string]string)
+	}
+
+	a.data.ExportHistory[weekStart] = time.Now().Format("2006-01-02")
+	return a.saveDataLocked()
+}
+
+// IsWeekExported checks if a week has already been exported
+func (a *App) IsWeekExported(weekStart string) bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.data.ExportHistory == nil {
+		return false
+	}
+
+	_, exists := a.data.ExportHistory[weekStart]
+	return exists
+}
+
+// SelectDirectory opens a native dialog to select a folder
+func (a *App) SelectDirectory() (string, error) {
+	selection, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Export Folder",
+	})
+	if err != nil {
+		return "", err
+	}
+	return selection, nil
 }

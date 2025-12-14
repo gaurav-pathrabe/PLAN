@@ -10,9 +10,20 @@ import {
     formatDateKey,
     getWeekStart,
     TaskTemplate,
-    getTasksForDate
+    getTasksForDate,
+    formatWeekRange
 } from '../store/plannerStore';
-import { LoadWeek, SaveDay, GetTaskTemplates } from '../../wailsjs/go/main/App';
+import {
+    LoadWeek,
+    SaveDay,
+    GetTaskTemplates,
+    // Auto-export imports
+    IsWeekExported,
+    GetWeeklyReport,
+    SaveHTMLExport,
+    MarkWeekExported
+} from '../../wailsjs/go/main/App';
+import { generateWeeklyHTML } from '../store/exportUtils';
 import { DayColumn } from './DayColumn';
 import './WeeklyPlanner.css';
 
@@ -77,11 +88,61 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
         };
     }, [weekStartKey, refreshKey]);
 
+    // Auto-export logic: Check if previous week needs exporting
+    useEffect(() => {
+        const checkAndExportPreviousWeek = async () => {
+            try {
+                // Calculate previous week's start date
+                const currentWeekDate = getWeekStart(currentDate);
+                const prevWeekDate = new Date(currentWeekDate);
+                prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+                const prevWeekKey = formatDateKey(prevWeekDate);
+
+                // 1. Check if already exported
+                const exported = await IsWeekExported(prevWeekKey);
+                if (exported) return;
+
+                console.log(`Auto-exporting previous week: ${prevWeekKey}`);
+
+                // 2. Fetch report data
+                const report = await GetWeeklyReport(prevWeekKey);
+
+                // 3. Generate HTML
+                const prevWeekObj = new Date(prevWeekKey);
+                const prevWeekRangeStr = formatWeekRange(getWeekDates(prevWeekObj));
+
+                const html = generateWeeklyHTML({
+                    dateRange: prevWeekRangeStr,
+                    dailyPercentages: report.dailyPercentages as number[] || [],
+                    weeklyAverage: report.weeklyAverage as number || 0
+                });
+
+                // 4. Save to disk
+                const filename = `PLAN-Weekly-${prevWeekKey}.html`;
+                await SaveHTMLExport(filename, html);
+
+                // 5. Mark as exported
+                await MarkWeekExported(prevWeekKey);
+                console.log(`Successfully auto-exported: ${filename}`);
+
+            } catch (error) {
+                console.error('Auto-export failed:', error);
+            }
+        };
+
+        // Delay slightly to ensure app is ready
+        const timer = setTimeout(() => {
+            checkAndExportPreviousWeek();
+        }, 2000);
+
+        return () => clearTimeout(timer);
+    }, [weekStartKey]);
+
     // Handle task toggle
     const handleTaskToggle = useCallback(async (dateKey: string, taskId: string) => {
         setWeekData(prevData => {
             const newData = new Map(prevData);
-            const dayTasks = { ...newData.get(dateKey) } || {};
+            const dayTasks = { ...newData.get(dateKey) };
 
             dayTasks[taskId] = !dayTasks[taskId];
             newData.set(dateKey, dayTasks);

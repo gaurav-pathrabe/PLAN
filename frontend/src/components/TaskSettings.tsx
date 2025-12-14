@@ -1,17 +1,30 @@
 /**
  * TaskSettings.tsx - Settings modal for managing task templates
  * 
- * Allows adding, editing, deleting, and reordering tasks with confirmations
+ * Allows adding, editing, deleting, reordering tasks, and configuring export settings
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { TaskTemplate } from '../store/plannerStore';
+import {
+    TaskTemplate,
+    getWeekDates,
+    formatWeekRange,
+    formatDateKey
+} from '../store/plannerStore';
+import { generateWeeklyHTML } from '../store/exportUtils';
 import {
     GetTaskTemplates,
     AddTask,
     UpdateTask,
     DeleteTask,
-    ReorderTasks
+    ReorderTasks,
+    GetExportPath,
+    SetExportPath,
+    SelectDirectory,
+    IsWeekExported,
+    GetWeeklyReport,
+    SaveHTMLExport,
+    MarkWeekExported
 } from '../../wailsjs/go/main/App';
 import './TaskSettings.css';
 
@@ -33,7 +46,10 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingName, setEditingName] = useState('');
     const [newTaskName, setNewTaskName] = useState('');
+    const [exportPath, setExportPath] = useState('');
     const [isAdding, setIsAdding] = useState(false);
+    const [isExportingHistory, setIsExportingHistory] = useState(false);
+    const [exportStatus, setExportStatus] = useState('');
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
         isOpen: false,
         title: '',
@@ -66,8 +82,80 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
         try {
             const templates = await GetTaskTemplates();
             setTasks(templates || []);
+
+            const path = await GetExportPath();
+            setExportPath(path || 'Downloads/PLAN_Exports (Default)');
         } catch (error) {
             console.error('Failed to load tasks:', error);
+        }
+    };
+
+    const handleSelectExportPath = async () => {
+        try {
+            const path = await SelectDirectory();
+            if (path) {
+                await SetExportPath(path);
+                setExportPath(path);
+            }
+        } catch (error) {
+            console.error('Failed to select directory:', error);
+        }
+    };
+
+    const handleExportHistory = async () => {
+        if (isExportingHistory) return;
+
+        setIsExportingHistory(true);
+        setExportStatus('Starting export...');
+
+        try {
+            const today = new Date();
+            let exportedCount = 0;
+
+            // Go back 52 weeks
+            for (let i = 1; i <= 52; i++) {
+                const d = new Date(today);
+                d.setDate(d.getDate() - (i * 7));
+
+                // Get week start
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+                d.setDate(diff);
+                const weekKey = formatDateKey(d);
+
+                // Check if exported
+                const isExported = await IsWeekExported(weekKey);
+                if (!isExported) {
+                    setExportStatus(`Exporting week of ${weekKey}...`);
+
+                    // Fetch and export
+                    const report = await GetWeeklyReport(weekKey);
+
+                    // Only export if there is data (check if weeklyAverage > 0 or explicit check)
+                    if (report.weeklyAverage > 0 || (report.dailyPercentages && (report.dailyPercentages as number[]).some(p => p > 0))) {
+                        const rangeStr = formatWeekRange(getWeekDates(d));
+                        const html = generateWeeklyHTML({
+                            dateRange: rangeStr,
+                            dailyPercentages: report.dailyPercentages as number[] || [],
+                            weeklyAverage: report.weeklyAverage as number || 0
+                        });
+
+                        const filename = `PLAN-Weekly-${weekKey}.html`;
+                        await SaveHTMLExport(filename, html);
+                        await MarkWeekExported(weekKey);
+                        exportedCount++;
+                    }
+                }
+            }
+
+            setExportStatus(`Export complete. ${exportedCount} reports generated.`);
+            setTimeout(() => setExportStatus(''), 3000);
+
+        } catch (error) {
+            console.error('Export history failed:', error);
+            setExportStatus('Export failed.');
+        } finally {
+            setIsExportingHistory(false);
         }
     };
 
@@ -318,6 +406,30 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
                             Add New Task
                         </button>
                     )}
+
+                    <div className="settings-section">
+                        <h3 className="section-title">Export Location</h3>
+                        <div className="export-setting">
+                            <div className="path-display" title={exportPath}>
+                                {exportPath}
+                            </div>
+                            <button className="btn-secondary" onClick={handleSelectExportPath}>
+                                Change Folder
+                            </button>
+                        </div>
+
+                        <div className="export-actions" style={{ marginTop: '1rem' }}>
+                            <button
+                                className="btn-secondary"
+                                onClick={handleExportHistory}
+                                disabled={isExportingHistory}
+                                style={{ width: '100%' }}
+                            >
+                                {isExportingHistory ? 'Exporting...' : 'Export All Past Weeks'}
+                            </button>
+                            {exportStatus && <div className="export-status-text">{exportStatus}</div>}
+                        </div>
+                    </div>
                 </div>
             </div>
 
