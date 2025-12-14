@@ -17,6 +17,7 @@ import (
 type TaskTemplate struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
+	Type      string  `json:"type,omitempty"` // "binary" (default) or "count"
 	Order     int     `json:"order"`
 	CreatedAt string  `json:"createdAt"`
 	DeletedAt *string `json:"deletedAt,omitempty"`
@@ -30,8 +31,10 @@ type PlannerData struct {
 	ExportHistory map[string]string   `json:"exportHistory,omitempty"` // weekStart -> exportedDate
 }
 
-// DayTasks maps task IDs to completion status
-type DayTasks map[string]bool
+// DayTasks maps task IDs to numeric value.
+// - binary habits: 0/1
+// - count habits: 0..N
+type DayTasks map[string]int
 
 // App struct holds the application state
 type App struct {
@@ -91,14 +94,72 @@ func (a *App) loadData() {
 		return
 	}
 
-	// Try new format first
-	var newFormat PlannerData
-	if err := json.Unmarshal(data, &newFormat); err == nil && len(newFormat.Templates) > 0 {
-		a.data = newFormat
-		if a.data.Days == nil {
-			a.data.Days = make(map[string]DayTasks)
+	// Detect format safely.
+	// Unmarshalling old-format data into PlannerData succeeds with empty fields,
+	// so we look for known top-level keys before choosing the new format.
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err == nil {
+		_, hasTemplates := root["templates"]
+		_, hasDays := root["days"]
+		_, hasExportPath := root["exportPath"]
+		_, hasExportHistory := root["exportHistory"]
+
+		if hasTemplates || hasDays || hasExportPath || hasExportHistory {
+			// We intentionally parse Days as a loose map to support older saved data
+			// where day values were booleans.
+			type plannerDataWire struct {
+				Templates     []TaskTemplate              `json:"templates"`
+				Days          map[string]map[string]any   `json:"days"`
+				ExportPath    string                      `json:"exportPath,omitempty"`
+				ExportHistory map[string]string           `json:"exportHistory,omitempty"`
+			}
+
+			var wire plannerDataWire
+			if err := json.Unmarshal(data, &wire); err == nil {
+				convertedDays := make(map[string]DayTasks)
+				for date, taskMap := range wire.Days {
+					dayTasks := make(DayTasks)
+					for id, raw := range taskMap {
+						switch v := raw.(type) {
+						case bool:
+							if v {
+								dayTasks[id] = 1
+							} else {
+								dayTasks[id] = 0
+							}
+						case float64:
+							dayTasks[id] = int(v)
+						case int:
+							dayTasks[id] = v
+						default:
+							// Ignore unsupported values
+						}
+					}
+					convertedDays[date] = dayTasks
+				}
+
+				// Default type for older templates.
+				for i := range wire.Templates {
+					if wire.Templates[i].Type == "" {
+						wire.Templates[i].Type = "binary"
+					}
+				}
+
+				a.data = PlannerData{
+					Templates:     wire.Templates,
+					Days:          convertedDays,
+					ExportPath:    wire.ExportPath,
+					ExportHistory: wire.ExportHistory,
+				}
+				if a.data.Days == nil {
+					a.data.Days = make(map[string]DayTasks)
+				}
+				if a.data.ExportHistory == nil {
+					a.data.ExportHistory = make(map[string]string)
+				}
+				return
+			}
 		}
-		return
 	}
 
 	// Try old format (map[string][]bool)
@@ -146,10 +207,10 @@ func (a *App) migrateOldData() {
 	// Create default templates for migration
 	today := time.Now().Format("2006-01-02")
 	defaultTasks := []TaskTemplate{
-		{ID: "task-1", Name: "Task 1", Order: 0, CreatedAt: today},
-		{ID: "task-2", Name: "Task 2", Order: 1, CreatedAt: today},
-		{ID: "task-3", Name: "Task 3", Order: 2, CreatedAt: today},
-		{ID: "task-4", Name: "Task 4", Order: 3, CreatedAt: today},
+		{ID: "task-1", Name: "Task 1", Type: "binary", Order: 0, CreatedAt: today},
+		{ID: "task-2", Name: "Task 2", Type: "binary", Order: 1, CreatedAt: today},
+		{ID: "task-3", Name: "Task 3", Type: "binary", Order: 2, CreatedAt: today},
+		{ID: "task-4", Name: "Task 4", Type: "binary", Order: 3, CreatedAt: today},
 	}
 
 	// Convert old data
@@ -158,7 +219,11 @@ func (a *App) migrateOldData() {
 		dayTasks := make(DayTasks)
 		for i, completed := range tasks {
 			if i < len(defaultTasks) {
-				dayTasks[defaultTasks[i].ID] = completed
+				if completed {
+					dayTasks[defaultTasks[i].ID] = 1
+				} else {
+					dayTasks[defaultTasks[i].ID] = 0
+				}
 			}
 		}
 		newDays[date] = dayTasks
@@ -179,10 +244,10 @@ func (a *App) createDefaultTasks() {
 
 	today := time.Now().Format("2006-01-02")
 	a.data.Templates = []TaskTemplate{
-		{ID: uuid.New().String(), Name: "Morning Routine", Order: 0, CreatedAt: today},
-		{ID: uuid.New().String(), Name: "Deep Work", Order: 1, CreatedAt: today},
-		{ID: uuid.New().String(), Name: "Exercise", Order: 2, CreatedAt: today},
-		{ID: uuid.New().String(), Name: "Evening Review", Order: 3, CreatedAt: today},
+		{ID: uuid.New().String(), Name: "Morning Routine", Type: "binary", Order: 0, CreatedAt: today},
+		{ID: uuid.New().String(), Name: "Deep Work", Type: "binary", Order: 1, CreatedAt: today},
+		{ID: uuid.New().String(), Name: "Exercise", Type: "binary", Order: 2, CreatedAt: today},
+		{ID: uuid.New().String(), Name: "Evening Review", Type: "binary", Order: 3, CreatedAt: today},
 	}
 
 	a.saveDataLocked()
@@ -233,8 +298,25 @@ func (a *App) atomicWriteFile(filename string, data []byte) error {
 		return err
 	}
 
-	// Atomic rename
-	return os.Rename(tmpPath, filename)
+	// Atomic rename on Unix; on Windows, os.Rename fails if destination exists.
+	renameErr := os.Rename(tmpPath, filename)
+	if renameErr == nil {
+		return nil
+	}
+
+	// If the destination exists, try remove+rename as a best-effort fallback.
+	if _, statErr := os.Stat(filename); statErr == nil {
+		if removeErr := os.Remove(filename); removeErr == nil || os.IsNotExist(removeErr) {
+			if err2 := os.Rename(tmpPath, filename); err2 == nil {
+				return nil
+			} else {
+				renameErr = err2
+			}
+		}
+	}
+
+	os.Remove(tmpPath)
+	return renameErr
 }
 
 // GetTaskTemplates returns all active task templates
@@ -244,6 +326,9 @@ func (a *App) GetTaskTemplates() []TaskTemplate {
 
 	var active []TaskTemplate
 	for _, t := range a.data.Templates {
+		if t.Type == "" {
+			t.Type = "binary"
+		}
 		if t.DeletedAt == nil {
 			active = append(active, t)
 		}
@@ -263,6 +348,9 @@ func (a *App) GetTasksForDate(date string) []TaskTemplate {
 
 	var tasks []TaskTemplate
 	for _, t := range a.data.Templates {
+		if t.Type == "" {
+			t.Type = "binary"
+		}
 		// Include if created on or before this date
 		if t.CreatedAt <= date {
 			// Exclude if deleted before this date
@@ -280,9 +368,16 @@ func (a *App) GetTasksForDate(date string) []TaskTemplate {
 }
 
 // AddTask creates a new task template
-func (a *App) AddTask(name string) (TaskTemplate, error) {
+func (a *App) AddTask(name string, taskType string) (TaskTemplate, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	if taskType == "" {
+		taskType = "binary"
+	}
+	if taskType != "binary" && taskType != "count" {
+		taskType = "binary"
+	}
 
 	// Find max order
 	maxOrder := -1
@@ -295,6 +390,7 @@ func (a *App) AddTask(name string) (TaskTemplate, error) {
 	task := TaskTemplate{
 		ID:        uuid.New().String(),
 		Name:      name,
+		Type:      taskType,
 		Order:     maxOrder + 1,
 		CreatedAt: time.Now().Format("2006-01-02"),
 	}
@@ -303,6 +399,28 @@ func (a *App) AddTask(name string) (TaskTemplate, error) {
 	a.saveDataLocked()
 
 	return task, nil
+}
+
+// SetTaskType updates a task's type ("binary" or "count").
+func (a *App) SetTaskType(id string, taskType string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if taskType == "" {
+		taskType = "binary"
+	}
+	if taskType != "binary" && taskType != "count" {
+		return nil
+	}
+
+	for i, t := range a.data.Templates {
+		if t.ID == id {
+			a.data.Templates[i].Type = taskType
+			return a.saveDataLocked()
+		}
+	}
+
+	return nil
 }
 
 // UpdateTask renames a task
@@ -356,23 +474,23 @@ func (a *App) ReorderTasks(ids []string) error {
 }
 
 // LoadDay returns task completion status for a specific date
-func (a *App) LoadDay(date string) map[string]bool {
+func (a *App) LoadDay(date string) map[string]int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	if tasks, ok := a.data.Days[date]; ok {
-		result := make(map[string]bool)
+		result := make(map[string]int)
 		for k, v := range tasks {
 			result[k] = v
 		}
 		return result
 	}
 
-	return make(map[string]bool)
+	return make(map[string]int)
 }
 
 // SaveDay saves task completion status for a specific date
-func (a *App) SaveDay(date string, tasks map[string]bool) error {
+func (a *App) SaveDay(date string, tasks map[string]int) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -385,11 +503,11 @@ func (a *App) SaveDay(date string, tasks map[string]bool) error {
 }
 
 // LoadWeek returns task data for a week starting from the given date
-func (a *App) LoadWeek(startDate string) map[string]map[string]bool {
+func (a *App) LoadWeek(startDate string) map[string]map[string]int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	result := make(map[string]map[string]bool)
+	result := make(map[string]map[string]int)
 
 	t, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
@@ -401,13 +519,13 @@ func (a *App) LoadWeek(startDate string) map[string]map[string]bool {
 		dateKey := date.Format("2006-01-02")
 
 		if tasks, ok := a.data.Days[dateKey]; ok {
-			taskCopy := make(map[string]bool)
+			taskCopy := make(map[string]int)
 			for k, v := range tasks {
 				taskCopy[k] = v
 			}
 			result[dateKey] = taskCopy
 		} else {
-			result[dateKey] = make(map[string]bool)
+			result[dateKey] = make(map[string]int)
 		}
 	}
 
@@ -447,8 +565,14 @@ func (a *App) GetWeeklyReport(startDate string) map[string]interface{} {
 		if dayTasks, ok := a.data.Days[dateKey]; ok {
 			completed := 0
 			for _, task := range tasksForDate {
-				if dayTasks[task.ID] {
-					completed++
+				typeVal := task.Type
+				if typeVal == "" {
+					typeVal = "binary"
+				}
+				if typeVal == "binary" || typeVal == "count" {
+					if dayTasks[task.ID] > 0 {
+						completed++
+					}
 				}
 			}
 			percentage := float64(completed) / float64(taskCount) * 100.0
@@ -506,8 +630,14 @@ func (a *App) GetMonthlyReport(year int, month int) map[string]interface{} {
 				if dayTasks, ok := a.data.Days[dateKey]; ok {
 					completed := 0
 					for _, task := range tasksForDate {
-						if dayTasks[task.ID] {
-							completed++
+						typeVal := task.Type
+						if typeVal == "" {
+							typeVal = "binary"
+						}
+						if typeVal == "binary" || typeVal == "count" {
+							if dayTasks[task.ID] > 0 {
+								completed++
+							}
 						}
 					}
 					weekTotal += float64(completed) / float64(taskCount) * 100.0
@@ -569,8 +699,14 @@ func (a *App) GetYearlyReport(year int) map[string]interface{} {
 				if dayTasks, ok := a.data.Days[dateKey]; ok {
 					completed := 0
 					for _, task := range tasksForDate {
-						if dayTasks[task.ID] {
-							completed++
+						typeVal := task.Type
+						if typeVal == "" {
+							typeVal = "binary"
+						}
+						if typeVal == "binary" || typeVal == "count" {
+							if dayTasks[task.ID] > 0 {
+								completed++
+							}
 						}
 					}
 					dailyPercentages = append(dailyPercentages, float64(completed)/float64(taskCount)*100.0)
@@ -619,7 +755,9 @@ func (a *App) GetYearlyReport(year int) map[string]interface{} {
 // SaveHTMLExport saves HTML content to Downloads folder
 func (a *App) SaveHTMLExport(filename string, htmlContent string) (string, error) {
 	// Check export path setting or default
+	a.mu.RLock()
 	exportDir := a.data.ExportPath
+	a.mu.RUnlock()
 	if exportDir == "" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -636,8 +774,7 @@ func (a *App) SaveHTMLExport(filename string, htmlContent string) (string, error
 
 	downloadsPath := filepath.Join(finalDir, filename)
 
-	err := os.WriteFile(downloadsPath, []byte(htmlContent), 0644)
-	if err != nil {
+	if err := a.atomicWriteFile(downloadsPath, []byte(htmlContent)); err != nil {
 		return "", err
 	}
 

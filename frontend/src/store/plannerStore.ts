@@ -7,6 +7,7 @@
 export interface TaskTemplate {
   id: string;
   name: string;
+  type?: 'binary' | 'count';
   order: number;
   createdAt: string;
   deletedAt?: string;
@@ -30,19 +31,36 @@ export function formatDateKey(date: Date): string {
 }
 
 /**
- * Get the start of the week (Sunday) for a given date
+ * Parse an ISO date key (YYYY-MM-DD) into a local Date at midnight.
+ *
+ * Avoids the timezone shift that can happen with `new Date('YYYY-MM-DD')`.
+ */
+export function parseDateKeyLocal(dateKey: string): Date {
+  const parts = dateKey.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) {
+    return new Date(dateKey);
+  }
+
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day, 0, 0, 0, 0);
+}
+
+/**
+ * Get the start of the week (Monday) for a given date
  */
 export function getWeekStart(date: Date): Date {
   const d = new Date(date);
+  // JS: 0=Sun..6=Sat. Monday-start means we shift by (day+6)%7.
   const day = d.getDay();
-  d.setDate(d.getDate() - day);
+  const diff = (day + 6) % 7;
+  d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
 /**
  * Get array of 7 dates for the week containing the given date
- * Week runs Sunday to Saturday
+ * Week runs Monday to Sunday
  */
 export function getWeekDates(baseDate: Date): Date[] {
   const weekStart = getWeekStart(baseDate);

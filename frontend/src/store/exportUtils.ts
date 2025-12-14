@@ -19,7 +19,7 @@ export function generateWeeklyHTML(data: {
     dailyPercentages: number[];
     weeklyAverage: number;
 }): string {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
     const barsHTML = data.dailyPercentages.map((pct, i) => `
     <div class="bar-container">

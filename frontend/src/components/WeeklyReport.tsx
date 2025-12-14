@@ -15,7 +15,7 @@ interface WeeklyReportProps {
     refreshKey?: number;
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const WeeklyReport: React.FC<WeeklyReportProps> = ({ currentDate, refreshKey = 0 }) => {
     const [dailyPercentages, setDailyPercentages] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);

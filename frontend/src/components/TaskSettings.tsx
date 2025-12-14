@@ -9,7 +9,8 @@ import {
     TaskTemplate,
     getWeekDates,
     formatWeekRange,
-    formatDateKey
+    formatDateKey,
+    getWeekStart
 } from '../store/plannerStore';
 import { generateWeeklyHTML } from '../store/exportUtils';
 import {
@@ -17,6 +18,7 @@ import {
     AddTask,
     UpdateTask,
     DeleteTask,
+    SetTaskType,
     ReorderTasks,
     GetExportPath,
     SetExportPath,
@@ -46,6 +48,7 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingName, setEditingName] = useState('');
     const [newTaskName, setNewTaskName] = useState('');
+    const [newTaskType, setNewTaskType] = useState<'binary' | 'count'>('binary');
     const [exportPath, setExportPath] = useState('');
     const [isAdding, setIsAdding] = useState(false);
     const [isExportingHistory, setIsExportingHistory] = useState(false);
@@ -81,7 +84,12 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
     const loadTasks = async () => {
         try {
             const templates = await GetTaskTemplates();
-            setTasks(templates || []);
+            setTasks(
+                (templates || []).map((t: any) => ({
+                    ...t,
+                    type: t?.type === 'count' ? 'count' : 'binary'
+                }))
+            );
 
             const path = await GetExportPath();
             setExportPath(path || 'Downloads/PLAN_Exports (Default)');
@@ -117,11 +125,8 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
                 const d = new Date(today);
                 d.setDate(d.getDate() - (i * 7));
 
-                // Get week start
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-                d.setDate(diff);
-                const weekKey = formatDateKey(d);
+                const weekStart = getWeekStart(d);
+                const weekKey = formatDateKey(weekStart);
 
                 // Check if exported
                 const isExported = await IsWeekExported(weekKey);
@@ -133,7 +138,7 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
 
                     // Only export if there is data (check if weeklyAverage > 0 or explicit check)
                     if (report.weeklyAverage > 0 || (report.dailyPercentages && (report.dailyPercentages as number[]).some(p => p > 0))) {
-                        const rangeStr = formatWeekRange(getWeekDates(d));
+                        const rangeStr = formatWeekRange(getWeekDates(weekStart));
                         const html = generateWeeklyHTML({
                             dateRange: rangeStr,
                             dailyPercentages: report.dailyPercentages as number[] || [],
@@ -214,13 +219,14 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
         setConfirmDialog({
             isOpen: true,
             title: 'Add Task',
-            message: `Add "${newTaskName.trim()}" as a new daily task? This will appear for today and all future dates.`,
+            message: `Add "${newTaskName.trim()}" as a new ${newTaskType === 'count' ? 'count' : 'checkbox'} habit? This will appear for today and all future dates.`,
             onConfirm: async () => {
                 try {
-                    await AddTask(newTaskName.trim());
+                    await AddTask(newTaskName.trim(), newTaskType);
                     await loadTasks();
                     onTasksChanged();
                     setNewTaskName('');
+                    setNewTaskType('binary');
                     setIsAdding(false);
                 } catch (error) {
                     console.error('Failed to add task:', error);
@@ -266,6 +272,19 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
             onTasksChanged();
         } catch (error) {
             console.error('Failed to reorder tasks:', error);
+        }
+    };
+
+    const handleToggleType = async (task: TaskTemplate) => {
+        const currentType = task.type === 'count' ? 'count' : 'binary';
+        const nextType = currentType === 'binary' ? 'count' : 'binary';
+
+        try {
+            await SetTaskType(task.id, nextType);
+            await loadTasks();
+            onTasksChanged();
+        } catch (error) {
+            console.error('Failed to update task type:', error);
         }
     };
 
@@ -351,6 +370,18 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
 
                                         <div className="task-actions">
                                             <button
+                                                className="action-button type"
+                                                onClick={() => handleToggleType(task)}
+                                                aria-label={`Switch ${task.name} to ${task.type === 'count' ? 'checkbox' : 'count'} habit`}
+                                                title={task.type === 'count' ? 'Count habit' : 'Checkbox habit'}
+                                            >
+                                                {task.type === 'count' ? (
+                                                    <span className="type-chip">#</span>
+                                                ) : (
+                                                    <span className="type-chip">✓</span>
+                                                )}
+                                            </button>
+                                            <button
                                                 className="action-button edit"
                                                 onClick={() => handleStartEdit(task)}
                                                 aria-label="Edit task"
@@ -379,6 +410,22 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
 
                     {isAdding ? (
                         <div className="add-task-form">
+                            <div className="type-toggle">
+                                <button
+                                    type="button"
+                                    className={`type-toggle-button ${newTaskType === 'binary' ? 'is-active' : ''}`}
+                                    onClick={() => setNewTaskType('binary')}
+                                >
+                                    Checkbox
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`type-toggle-button ${newTaskType === 'count' ? 'is-active' : ''}`}
+                                    onClick={() => setNewTaskType('count')}
+                                >
+                                    Count
+                                </button>
+                            </div>
                             <input
                                 ref={newInputRef}
                                 type="text"
