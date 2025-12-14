@@ -155,3 +155,38 @@
 .perspective-note strong {
     color: var(--accent);
 }
+
+.yearly-report .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.yearly-report .export-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--bg-secondary);
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.yearly-report .export-button:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.yearly-report .export-message {
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-align: center;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    background: var(--accent-soft);
+    border-radius: 6px;
+}

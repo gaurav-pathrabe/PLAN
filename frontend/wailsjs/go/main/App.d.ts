@@ -24,4 +24,6 @@ export function ReorderTasks(arg1:Array<string>):Promise<void>;
 
 export function SaveDay(arg1:string,arg2:Record<string, boolean>):Promise<void>;
 
+export function SaveHTMLExport(arg1:string,arg2:string):Promise<string>;
+
 export function UpdateTask(arg1:string,arg2:string):Promise<void>;

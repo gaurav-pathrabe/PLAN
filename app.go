@@ -578,3 +578,20 @@ func (a *App) GetYearlyReport(year int) map[string]interface{} {
 
 	return result
 }
+
+// SaveHTMLExport saves HTML content to Downloads folder
+func (a *App) SaveHTMLExport(filename string, htmlContent string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	downloadsPath := filepath.Join(homeDir, "Downloads", filename)
+	
+	err = os.WriteFile(downloadsPath, []byte(htmlContent), 0644)
+	if err != nil {
+		return "", err
+	}
+
+	return downloadsPath, nil
+}

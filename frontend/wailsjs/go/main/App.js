@@ -46,6 +46,10 @@ export function SaveDay(arg1, arg2) {
   return window['go']['main']['App']['SaveDay'](arg1, arg2);
 }
 
+export function SaveHTMLExport(arg1, arg2) {
+  return window['go']['main']['App']['SaveHTMLExport'](arg1, arg2);
+}
+
 export function UpdateTask(arg1, arg2) {
   return window['go']['main']['App']['UpdateTask'](arg1, arg2);
 }
