@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>PLAN</title>
+    <style>
+        /* Prevent flash of unstyled content */
+        html,
+        body,
+        #root {
+            background-color: #f0f2f0;
+        }
+
+        html[data-theme="dark"],
+        html[data-theme="dark"] body,
+        html[data-theme="dark"] #root {
+            background-color: #000000;
+        }
+    </style>
+    <script>
+        // Apply theme immediately before page renders
+        (function () {
+            var theme = localStorage.getItem('plan-theme');
+            if (!theme) {
+                theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+            if (theme === 'dark') {
+                document.querySelector('meta[name="theme-color"]').setAttribute('content', '#000000');
+            }
+        })();
+    </script>
+</head>
+
+<body>
+    <div id="root"></div>
+    <script src="./src/main.tsx" type="module"></script>
+</body>
+
+</html>

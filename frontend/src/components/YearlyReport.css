@@ -1,0 +1,157 @@
+/**
+ * YearlyReport.css - Styles for yearly report component
+ */
+
+.yearly-report {
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-top: 1rem;
+    transition: opacity 0.2s ease;
+}
+
+.yearly-report.is-loading {
+    opacity: 0.6;
+}
+
+.yearly-report .report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.yearly-report .report-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.year-summary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.year-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+}
+
+.year-label {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.months-chart {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 0.35rem;
+    height: 180px;
+    padding: 0 0.25rem;
+}
+
+.month-bar-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    height: 100%;
+    position: relative;
+}
+
+.month-bar-wrapper.is-consistent .month-bar-fill {
+    background: linear-gradient(to top, var(--accent), var(--accent-hover));
+    box-shadow: 0 0 12px var(--accent-soft);
+}
+
+.month-bar-track {
+    flex: 1;
+    width: 100%;
+    max-width: 32px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
+}
+
+.month-bar-fill {
+    width: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    min-height: 2px;
+    transition: height 0.4s ease;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    position: relative;
+}
+
+.month-bar-value {
+    position: absolute;
+    top: 4px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    color: white;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.month-bar-wrapper:hover .month-bar-value {
+    opacity: 1;
+}
+
+.month-label {
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+
+.consistent-badge {
+    position: absolute;
+    top: -8px;
+    right: -2px;
+    font-size: 0.75rem;
+    color: var(--accent);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+.perspective-note {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.perspective-note p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.perspective-note strong {
+    color: var(--accent);
+}
