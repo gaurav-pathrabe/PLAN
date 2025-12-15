@@ -98,3 +98,207 @@
         padding: 0.5rem;
     }
 }
+
+/* ========================================
+   Pop-in Animations (Global)
+   ======================================== */
+@keyframes popIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    50% {
+        transform: scale(1.02);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes bounceIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.3);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+@keyframes fireGlow {
+    0%, 100% {
+        filter: drop-shadow(0 0 2px #ff6b35);
+    }
+    50% {
+        filter: drop-shadow(0 0 8px #ff6b35) drop-shadow(0 0 12px #ffa500);
+    }
+}
+
+.animate-pop-in {
+    animation: popIn 0.25s ease-out;
+}
+
+.animate-bounce-in {
+    animation: bounceIn 0.4s ease-out;
+}
+
+/* ========================================
+   Streak Badge Styles
+   ======================================== */
+.streak-badge-container {
+    position: relative;
+    margin-right: auto;
+}
+
+.streak-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.streak-badge:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+}
+
+.streak-badge.has-streak {
+    background: linear-gradient(135deg, #fff5f0 0%, #ffe8dc 100%);
+    border-color: #ff6b35;
+    color: #e55a2b;
+}
+
+[data-theme="dark"] .streak-badge.has-streak {
+    background: linear-gradient(135deg, #2d1810 0%, #3d2218 100%);
+    color: #ff8c5a;
+}
+
+.streak-flame {
+    font-size: 1.1rem;
+    animation: fireGlow 2s ease-in-out infinite;
+}
+
+.streak-badge.has-streak .streak-flame {
+    animation: fireGlow 1.5s ease-in-out infinite, pulse 2s ease-in-out infinite;
+}
+
+.streak-count {
+    font-weight: 700;
+    min-width: 1.25rem;
+    text-align: center;
+}
+
+/* Streak Popup */
+.streak-popup {
+    position: absolute;
+    top: calc(100% + 0.75rem);
+    left: 0;
+    min-width: 260px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.streak-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+    background: linear-gradient(135deg, #ff6b35 0%, #ffa500 100%);
+    color: white;
+}
+
+.streak-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.streak-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    font-size: 1.25rem;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.streak-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+.streak-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    padding: 1rem;
+}
+
+.streak-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.75rem 0.5rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.stat-label {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.streak-tip {
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    margin: 0;
+    text-align: center;
+    border-top: 1px solid var(--border-color);
+}

@@ -12,18 +12,44 @@ import { MonthlyReport } from './components/MonthlyReport';
 import { YearlyReport } from './components/YearlyReport';
 import { TaskSettings } from './components/TaskSettings';
 import { initializeTheme, toggleTheme, Theme } from './store/theme';
+import { GetStreaks } from '../wailsjs/go/main/App';
 import './App.css';
+
+interface StreakData {
+    currentStreak: number;
+    longestStreak: number;
+    totalPerfectDays: number;
+}
 
 function App() {
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
     const [theme, setTheme] = useState<Theme>('light');
     const [refreshKey, setRefreshKey] = useState<number>(0);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [streaks, setStreaks] = useState<StreakData>({ currentStreak: 0, longestStreak: 0, totalPerfectDays: 0 });
+    const [showStreakPopup, setShowStreakPopup] = useState(false);
 
     useEffect(() => {
         const initialTheme = initializeTheme();
         setTheme(initialTheme);
     }, []);
+
+    // Load streaks data
+    useEffect(() => {
+        const loadStreaks = async () => {
+            try {
+                const data = await GetStreaks();
+                setStreaks({
+                    currentStreak: data.currentStreak || 0,
+                    longestStreak: data.longestStreak || 0,
+                    totalPerfectDays: data.totalPerfectDays || 0
+                });
+            } catch (error) {
+                console.error('Failed to load streaks:', error);
+            }
+        };
+        loadStreaks();
+    }, [refreshKey]);
 
     const handleThemeToggle = () => {
         const newTheme = toggleTheme();
@@ -51,6 +77,42 @@ function App() {
 
             {/* Toolbar */}
             <div className="toolbar">
+                {/* Streak Badge */}
+                <div className="streak-badge-container">
+                    <button 
+                        className={`streak-badge ${streaks.currentStreak > 0 ? 'has-streak' : ''}`}
+                        onClick={() => setShowStreakPopup(!showStreakPopup)}
+                        aria-label="View streaks"
+                    >
+                        <span className="streak-flame">🔥</span>
+                        <span className="streak-count">{streaks.currentStreak}</span>
+                    </button>
+                    
+                    {showStreakPopup && (
+                        <div className="streak-popup animate-pop-in">
+                            <div className="streak-popup-header">
+                                <span className="streak-title">🔥 Streaks</span>
+                                <button className="streak-close" onClick={() => setShowStreakPopup(false)}>×</button>
+                            </div>
+                            <div className="streak-stats">
+                                <div className="streak-stat">
+                                    <span className="stat-value">{streaks.currentStreak}</span>
+                                    <span className="stat-label">Current Streak</span>
+                                </div>
+                                <div className="streak-stat">
+                                    <span className="stat-value">{streaks.longestStreak}</span>
+                                    <span className="stat-label">Longest Streak</span>
+                                </div>
+                                <div className="streak-stat">
+                                    <span className="stat-value">⭐ {streaks.totalPerfectDays}</span>
+                                    <span className="stat-label">Perfect Days</span>
+                                </div>
+                            </div>
+                            <p className="streak-tip">Complete 50%+ of tasks daily to maintain your streak!</p>
+                        </div>
+                    )}
+                </div>
+
                 <button
                     className="toolbar-button"
                     onClick={() => setIsSettingsOpen(true)}

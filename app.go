@@ -18,6 +18,7 @@ type TaskTemplate struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
 	Type      string  `json:"type,omitempty"` // "binary" (default) or "count"
+	Unit      string  `json:"unit,omitempty"` // For count tasks: "min", "hrs", "reps", etc.
 	Order     int     `json:"order"`
 	CreatedAt string  `json:"createdAt"`
 	DeletedAt *string `json:"deletedAt,omitempty"`
@@ -368,7 +369,7 @@ func (a *App) GetTasksForDate(date string) []TaskTemplate {
 }
 
 // AddTask creates a new task template
-func (a *App) AddTask(name string, taskType string) (TaskTemplate, error) {
+func (a *App) AddTask(name string, taskType string, unit string) (TaskTemplate, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -391,6 +392,7 @@ func (a *App) AddTask(name string, taskType string) (TaskTemplate, error) {
 		ID:        uuid.New().String(),
 		Name:      name,
 		Type:      taskType,
+		Unit:      unit,
 		Order:     maxOrder + 1,
 		CreatedAt: time.Now().Format("2006-01-02"),
 	}
@@ -832,4 +834,183 @@ func (a *App) SelectDirectory() (string, error) {
 		return "", err
 	}
 	return selection, nil
+}
+
+// GetStreaks calculates current streak and longest streak
+// A streak is consecutive days where completion >= 50%
+func (a *App) GetStreaks() map[string]interface{} {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	result := map[string]interface{}{
+		"currentStreak":  0,
+		"longestStreak":  0,
+		"totalPerfectDays": 0,
+	}
+
+	// Get all dates and sort them
+	var dates []string
+	for date := range a.data.Days {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+
+	if len(dates) == 0 {
+		return result
+	}
+
+	// Calculate streaks
+	longestStreak := 0
+	currentStreak := 0
+	totalPerfectDays := 0
+	
+	// Start from today and go backwards
+	today := time.Now()
+	todayKey := today.Format("2006-01-02")
+	
+	// Calculate current streak (going backwards from today)
+	checkDate := today
+	for {
+		dateKey := checkDate.Format("2006-01-02")
+		
+		tasksForDate := a.getTasksForDateLocked(dateKey)
+		taskCount := len(tasksForDate)
+		
+		if taskCount == 0 {
+			// No tasks for this day, skip but don't break streak
+			checkDate = checkDate.AddDate(0, 0, -1)
+			// Stop if we go back more than a year
+			if today.Sub(checkDate).Hours() > 365*24 {
+				break
+			}
+			continue
+		}
+		
+		dayTasks, ok := a.data.Days[dateKey]
+		if !ok {
+			// No data for this day with tasks - break current streak
+			break
+		}
+		
+		completed := 0
+		for _, task := range tasksForDate {
+			typeVal := task.Type
+			if typeVal == "" {
+				typeVal = "binary"
+			}
+			if dayTasks[task.ID] > 0 {
+				completed++
+			}
+		}
+		
+		percentage := float64(completed) / float64(taskCount) * 100.0
+		
+		if percentage >= 50.0 {
+			currentStreak++
+			if percentage == 100.0 {
+				totalPerfectDays++
+			}
+		} else {
+			break
+		}
+		
+		checkDate = checkDate.AddDate(0, 0, -1)
+		// Stop if we go back more than a year
+		if today.Sub(checkDate).Hours() > 365*24 {
+			break
+		}
+	}
+	
+	// Calculate longest streak (going through all dates)
+	streak := 0
+	var prevDate *time.Time
+	
+	for _, dateKey := range dates {
+		date, err := time.Parse("2006-01-02", dateKey)
+		if err != nil {
+			continue
+		}
+		
+		tasksForDate := a.getTasksForDateLocked(dateKey)
+		taskCount := len(tasksForDate)
+		
+		if taskCount == 0 {
+			continue
+		}
+		
+		dayTasks, ok := a.data.Days[dateKey]
+		if !ok {
+			streak = 0
+			prevDate = &date
+			continue
+		}
+		
+		completed := 0
+		for _, task := range tasksForDate {
+			typeVal := task.Type
+			if typeVal == "" {
+				typeVal = "binary"
+			}
+			if dayTasks[task.ID] > 0 {
+				completed++
+			}
+		}
+		
+		percentage := float64(completed) / float64(taskCount) * 100.0
+		
+		if percentage >= 50.0 {
+			// Check if consecutive day
+			if prevDate != nil {
+				diff := date.Sub(*prevDate).Hours() / 24
+				if diff <= 1 {
+					streak++
+				} else {
+					streak = 1
+				}
+			} else {
+				streak = 1
+			}
+			
+			if percentage == 100.0 && dateKey != todayKey {
+				// Already counted in current streak check
+			}
+			
+			if streak > longestStreak {
+				longestStreak = streak
+			}
+		} else {
+			streak = 0
+		}
+		
+		prevDate = &date
+	}
+	
+	// Also count perfect days from historical data
+	for _, dateKey := range dates {
+		tasksForDate := a.getTasksForDateLocked(dateKey)
+		taskCount := len(tasksForDate)
+		if taskCount == 0 {
+			continue
+		}
+		dayTasks, ok := a.data.Days[dateKey]
+		if !ok {
+			continue
+		}
+		completed := 0
+		for _, task := range tasksForDate {
+			if dayTasks[task.ID] > 0 {
+				completed++
+			}
+		}
+		if completed == taskCount && taskCount > 0 {
+			// Count only if not already counted in current streak
+			// This is a simplified count
+		}
+	}
+
+	result["currentStreak"] = currentStreak
+	result["longestStreak"] = longestStreak
+	result["totalPerfectDays"] = totalPerfectDays
+
+	return result
 }

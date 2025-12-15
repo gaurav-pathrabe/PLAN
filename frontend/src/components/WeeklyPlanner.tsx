@@ -11,8 +11,7 @@ import {
     getWeekStart,
     TaskTemplate,
     getTasksForDate,
-    formatWeekRange,
-    parseDateKeyLocal
+    formatWeekRange
 } from '../store/plannerStore';
 import {
     LoadWeek,
@@ -45,7 +44,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
     // Task templates
     const [templates, setTemplates] = useState<TaskTemplate[]>([]);
 
-    // Week task completion data: date -> taskId -> completed
+    // Week task completion data: date -> taskId -> value (0/1 for binary, 0-N for count)
     const [weekData, setWeekData] = useState<Map<string, Record<string, number>>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
 
@@ -64,13 +63,15 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
 
                 if (cancelled) return;
 
+                // Cast templates to local TaskTemplate type
                 setTemplates(
                     (templatesData || []).map((t: any) => ({
                         ...t,
                         type: t?.type === 'count' ? 'count' : 'binary'
-                    }))
+                    })) as TaskTemplate[]
                 );
 
+                // Store numeric values directly
                 const newWeekData = new Map<string, Record<string, number>>();
                 weekDates.forEach(date => {
                     const key = formatDateKey(date);
@@ -114,7 +115,7 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                 const report = await GetWeeklyReport(prevWeekKey);
 
                 // 3. Generate HTML
-                const prevWeekObj = parseDateKeyLocal(prevWeekKey);
+                const prevWeekObj = new Date(prevWeekKey);
                 const prevWeekRangeStr = formatWeekRange(getWeekDates(prevWeekObj));
 
                 const html = generateWeeklyHTML({
@@ -144,49 +145,29 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
         return () => clearTimeout(timer);
     }, [weekStartKey]);
 
-    // Handle task toggle
-    const persistDay = useCallback((dateKey: string, dayTasks: Record<string, number>) => {
-        SaveDay(dateKey, dayTasks)
-            .then(() => {
-                if (onDataChange) {
-                    onDataChange();
-                }
-            })
-            .catch(error => {
-                console.error('Failed to save day:', error);
-            });
+    // Handle task value change (for both binary toggle and count increment/decrement)
+    const handleTaskChange = useCallback(async (dateKey: string, taskId: string, newValue: number) => {
+        setWeekData(prevData => {
+            const newData = new Map(prevData);
+            const dayTasks = { ...newData.get(dateKey) };
+
+            dayTasks[taskId] = Math.max(0, newValue); // Ensure non-negative
+            newData.set(dateKey, dayTasks);
+
+            // Save to backend
+            SaveDay(dateKey, dayTasks)
+                .then(() => {
+                    if (onDataChange) {
+                        onDataChange();
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to save day:', error);
+                });
+
+            return newData;
+        });
     }, [onDataChange]);
-
-    const handleBinaryToggle = useCallback(async (dateKey: string, taskId: string) => {
-        setWeekData(prevData => {
-            const newData = new Map(prevData);
-            const dayTasks = { ...newData.get(dateKey) };
-
-            const current = dayTasks[taskId] ?? 0;
-            dayTasks[taskId] = current > 0 ? 0 : 1;
-            newData.set(dateKey, dayTasks);
-
-            persistDay(dateKey, dayTasks);
-
-            return newData;
-        });
-    }, [persistDay]);
-
-    const handleCountDelta = useCallback(async (dateKey: string, taskId: string, delta: number) => {
-        setWeekData(prevData => {
-            const newData = new Map(prevData);
-            const dayTasks = { ...newData.get(dateKey) };
-
-            const current = dayTasks[taskId] ?? 0;
-            const next = Math.max(0, current + delta);
-            dayTasks[taskId] = next;
-            newData.set(dateKey, dayTasks);
-
-            persistDay(dateKey, dayTasks);
-
-            return newData;
-        });
-    }, [persistDay]);
 
     return (
         <main className="weekly-planner">
@@ -201,9 +182,8 @@ export const WeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
                             key={key}
                             date={date}
                             tasks={tasksForDay}
-                            taskStates={taskStates}
-                            onBinaryToggle={(taskId) => handleBinaryToggle(key, taskId)}
-                            onCountDelta={(taskId, delta) => handleCountDelta(key, taskId, delta)}
+                            taskValues={taskStates}
+                            onTaskChange={(taskId, newValue) => handleTaskChange(key, taskId, newValue)}
                         />
                     );
                 })}

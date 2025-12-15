@@ -43,12 +43,57 @@ interface ConfirmDialogState {
     onConfirm: () => void;
 }
 
+// Common emoji presets for tasks
+const EMOJI_PRESETS = [
+    { emoji: '🏃', label: 'Running' },
+    { emoji: '💪', label: 'Gym' },
+    { emoji: '💼', label: 'Work' },
+    { emoji: '📚', label: 'Study' },
+    { emoji: '🧘', label: 'Meditation' },
+    { emoji: '💧', label: 'Water' },
+    { emoji: '🥗', label: 'Healthy Eating' },
+    { emoji: '😴', label: 'Sleep' },
+    { emoji: '📝', label: 'Journal' },
+    { emoji: '🎯', label: 'Goals' },
+    { emoji: '🚶', label: 'Walk' },
+    { emoji: '🧹', label: 'Clean' },
+    { emoji: '💊', label: 'Vitamins' },
+    { emoji: '📵', label: 'No Phone' },
+    { emoji: '🎨', label: 'Creative' },
+    { emoji: '🎸', label: 'Music' },
+    { emoji: '🌱', label: 'Self-care' },
+    { emoji: '☕', label: 'Morning' },
+    { emoji: '🌙', label: 'Night Routine' },
+    { emoji: '✨', label: 'Custom' }
+];
+
+// Unit presets for count tasks
+const UNIT_PRESETS = [
+    { value: '', label: 'None' },
+    { value: 'min', label: 'Minutes' },
+    { value: 'hrs', label: 'Hours' },
+    { value: 'reps', label: 'Reps' },
+    { value: 'sets', label: 'Sets' },
+    { value: 'km', label: 'Kilometers' },
+    { value: 'mi', label: 'Miles' },
+    { value: 'steps', label: 'Steps' },
+    { value: 'glasses', label: 'Glasses' },
+    { value: 'pages', label: 'Pages' },
+    { value: 'cal', label: 'Calories' },
+    { value: 'custom', label: 'Custom...' }
+];
+
 export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onTasksChanged }) => {
     const [tasks, setTasks] = useState<TaskTemplate[]>([]);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingName, setEditingName] = useState('');
     const [newTaskName, setNewTaskName] = useState('');
     const [newTaskType, setNewTaskType] = useState<'binary' | 'count'>('binary');
+    const [selectedEmoji, setSelectedEmoji] = useState<string>('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [selectedUnit, setSelectedUnit] = useState<string>('');
+    const [customUnit, setCustomUnit] = useState<string>('');
+    const [showCustomUnit, setShowCustomUnit] = useState(false);
     const [exportPath, setExportPath] = useState('');
     const [isAdding, setIsAdding] = useState(false);
     const [isExportingHistory, setIsExportingHistory] = useState(false);
@@ -216,17 +261,30 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
             return;
         }
 
+        const taskNameWithEmoji = selectedEmoji 
+            ? `${selectedEmoji} ${newTaskName.trim()}` 
+            : newTaskName.trim();
+
+        // Determine final unit value
+        const finalUnit = showCustomUnit ? customUnit.trim() : selectedUnit;
+        const unitDisplay = finalUnit ? ` (${finalUnit})` : '';
+
         setConfirmDialog({
             isOpen: true,
             title: 'Add Task',
-            message: `Add "${newTaskName.trim()}" as a new ${newTaskType === 'count' ? 'count' : 'checkbox'} habit? This will appear for today and all future dates.`,
+            message: `Add "${taskNameWithEmoji}${unitDisplay}" as a new ${newTaskType === 'count' ? 'count' : 'checkbox'} habit? This will appear for today and all future dates.`,
             onConfirm: async () => {
                 try {
-                    await AddTask(newTaskName.trim(), newTaskType);
+                    await AddTask(taskNameWithEmoji, newTaskType, finalUnit);
                     await loadTasks();
                     onTasksChanged();
                     setNewTaskName('');
                     setNewTaskType('binary');
+                    setSelectedEmoji('');
+                    setShowEmojiPicker(false);
+                    setSelectedUnit('');
+                    setCustomUnit('');
+                    setShowCustomUnit(false);
                     setIsAdding(false);
                 } catch (error) {
                     console.error('Failed to add task:', error);
@@ -409,7 +467,7 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
                     </div>
 
                     {isAdding ? (
-                        <div className="add-task-form">
+                        <div className="add-task-form animate-pop-in">
                             <div className="type-toggle">
                                 <button
                                     type="button"
@@ -426,17 +484,109 @@ export const TaskSettings: React.FC<TaskSettingsProps> = ({ isOpen, onClose, onT
                                     Count
                                 </button>
                             </div>
-                            <input
-                                ref={newInputRef}
-                                type="text"
-                                value={newTaskName}
-                                onChange={e => setNewTaskName(e.target.value)}
-                                onKeyDown={e => handleKeyDown(e, 'add')}
-                                className="task-input"
-                                placeholder="Enter task name..."
-                            />
+                            
+                            {/* Emoji Picker */}
+                            <div className="emoji-picker-section">
+                                <button 
+                                    type="button"
+                                    className={`emoji-trigger ${selectedEmoji ? 'has-emoji' : ''}`}
+                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                >
+                                    {selectedEmoji || '😊'}
+                                    <span className="emoji-label">{selectedEmoji ? 'Change' : 'Add Icon'}</span>
+                                </button>
+                                
+                                {showEmojiPicker && (
+                                    <div className="emoji-picker animate-pop-in">
+                                        <div className="emoji-grid">
+                                            {EMOJI_PRESETS.map((item, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    type="button"
+                                                    className={`emoji-option ${selectedEmoji === item.emoji ? 'is-selected' : ''}`}
+                                                    onClick={() => {
+                                                        setSelectedEmoji(item.emoji);
+                                                        setShowEmojiPicker(false);
+                                                    }}
+                                                    title={item.label}
+                                                >
+                                                    {item.emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {selectedEmoji && (
+                                            <button 
+                                                type="button" 
+                                                className="emoji-clear"
+                                                onClick={() => {
+                                                    setSelectedEmoji('');
+                                                    setShowEmojiPicker(false);
+                                                }}
+                                            >
+                                                Remove Icon
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Unit Selector (only for count type) */}
+                            {newTaskType === 'count' && (
+                                <div className="unit-selector-section animate-pop-in">
+                                    <label className="unit-label">Unit (optional)</label>
+                                    <div className="unit-grid">
+                                        {UNIT_PRESETS.map((item) => (
+                                            <button
+                                                key={item.value}
+                                                type="button"
+                                                className={`unit-option ${
+                                                    (item.value === 'custom' && showCustomUnit) || 
+                                                    (!showCustomUnit && selectedUnit === item.value) 
+                                                        ? 'is-selected' 
+                                                        : ''
+                                                }`}
+                                                onClick={() => {
+                                                    if (item.value === 'custom') {
+                                                        setShowCustomUnit(true);
+                                                        setSelectedUnit('');
+                                                    } else {
+                                                        setShowCustomUnit(false);
+                                                        setCustomUnit('');
+                                                        setSelectedUnit(item.value);
+                                                    }
+                                                }}
+                                            >
+                                                {item.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {showCustomUnit && (
+                                        <input
+                                            type="text"
+                                            value={customUnit}
+                                            onChange={e => setCustomUnit(e.target.value)}
+                                            className="task-input custom-unit-input"
+                                            placeholder="Enter custom unit (e.g., laps, books)"
+                                            maxLength={15}
+                                        />
+                                    )}
+                                </div>
+                            )}
+                            
+                            <div className="task-input-wrapper">
+                                {selectedEmoji && <span className="input-emoji-preview">{selectedEmoji}</span>}
+                                <input
+                                    ref={newInputRef}
+                                    type="text"
+                                    value={newTaskName}
+                                    onChange={e => setNewTaskName(e.target.value)}
+                                    onKeyDown={e => handleKeyDown(e, 'add')}
+                                    className={`task-input ${selectedEmoji ? 'has-emoji' : ''}`}
+                                    placeholder="Enter task name..."
+                                />
+                            </div>
                             <div className="add-task-actions">
-                                <button className="btn-secondary" onClick={() => { setIsAdding(false); setNewTaskName(''); }}>
+                                <button className="btn-secondary" onClick={() => { setIsAdding(false); setNewTaskName(''); setSelectedEmoji(''); setShowEmojiPicker(false); setSelectedUnit(''); setCustomUnit(''); setShowCustomUnit(false); }}>
                                     Cancel
                                 </button>
                                 <button className="btn-primary" onClick={showAddConfirmation}>

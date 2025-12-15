@@ -8,6 +8,7 @@ export interface TaskTemplate {
   id: string;
   name: string;
   type?: 'binary' | 'count';
+  unit?: string; // For count tasks: "min", "hrs", "reps", etc.
   order: number;
   createdAt: string;
   deletedAt?: string;

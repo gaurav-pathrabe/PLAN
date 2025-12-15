@@ -4,6 +4,7 @@ export namespace main {
 	    id: string;
 	    name: string;
 	    type?: string;
+	    unit?: string;
 	    order: number;
 	    createdAt: string;
 	    deletedAt?: string;
@@ -17,6 +18,7 @@ export namespace main {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.type = source["type"];
+	        this.unit = source["unit"];
 	        this.order = source["order"];
 	        this.createdAt = source["createdAt"];
 	        this.deletedAt = source["deletedAt"];
